@@ -143,6 +143,41 @@ function ensureAudio() {
   } catch (e) { actx = null; }
 }
 function setAudio(on) { audioEnabled = on; if (master) master.gain.value = on ? 0.3 : 0; }
+
+// ───────────── 배경 음악 (Suno 로 만든 곡) ─────────────
+// 시작 화면 = title, 게임 중·게임 오버 = play. 화면이 바뀌면 0.6초 동안 겹치며 넘어가고, 끊김 없이 반복한다.
+// 소리는 첫 터치(ensureAudio) 뒤에만 나오고, 유튜브 음소거·일시정지는 master·actx 를 그대로 따른다.
+const MUSIC_VOL = 0.75;
+const music = { bufs: {}, loading: false, cur: null, want: null };
+function loadMusic() {
+  if (!actx || music.loading) return;
+  music.loading = true;
+  for (const name of ["title", "play"]) {
+    fetch(`audio/bgm_${name}.mp3`).then(r => r.arrayBuffer())
+      .then(b => new Promise((ok, no) => actx.decodeAudioData(b, ok, no)))
+      .then(buf => { music.bufs[name] = buf; music.cur = null; })     // 다 받으면 지금 화면 곡으로 다시 맞춤
+      .catch(() => {});
+  }
+}
+function updateMusic() {
+  if (!actx) return;
+  loadMusic();
+  const want = st.mode === "title" ? "title" : "play";
+  if (music.cur && music.cur.name === want) return;
+  const buf = music.bufs[want]; if (!buf) return;
+  const t = actx.currentTime;
+  if (music.cur) {                                                // 이전 곡은 서서히 줄이고 멈춤
+    const old = music.cur;
+    old.gain.gain.cancelScheduledValues(t); old.gain.gain.setValueAtTime(old.gain.gain.value, t);
+    old.gain.gain.linearRampToValueAtTime(0, t + 0.6); old.src.stop(t + 0.65);
+  }
+  const src = actx.createBufferSource(), gain = actx.createGain();
+  src.buffer = buf; src.loop = true;
+  src.loopStart = 0.03; src.loopEnd = buf.duration - 0.03;        // MP3 앞뒤 여백을 건너뛰어 이음매 없이
+  gain.gain.setValueAtTime(0, t); gain.gain.linearRampToValueAtTime(MUSIC_VOL, t + 0.6);
+  src.connect(gain); gain.connect(master); src.start(t, 0.03);
+  music.cur = { name: want, src, gain };
+}
 function tone(f, dur, type = "square", vol = 0.25, slide = 0) {
   if (!actx || !audioEnabled || st.paused) return;
   const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
@@ -773,7 +808,7 @@ function frame(now) {
   if (st.paused) return;
   { const d = Math.min(window.devicePixelRatio || 1, 2.5); if (Math.abs(cv.width - Math.round((cv.clientWidth || innerWidth) * d)) > 2) layout(); }
   const dt = Math.min(0.05, (now - (last || now)) / 1000); last = now;
-  update(dt); draw();
+  update(dt); draw(); updateMusic();
   if (!firstFrame) { firstFrame = true; sdk.firstFrameReady(); }
   rafId = requestAnimationFrame(frame);
 }
