@@ -33,7 +33,10 @@
   const R = Math.round;
 
   // 누르면 건너뛰기 (게임 쪽으로 터치가 새지 않게 막음)
-  const skip = e => { e.preventDefault(); e.stopPropagation(); if (skipAt === null) skipAt = now(); };
+  const skip = e => {
+    e.preventDefault(); e.stopPropagation(); if (skipAt === null) skipAt = now();
+    try { if (typeof window.ensureAudio === "function") window.ensureAudio(); } catch (_) {}   // 이 터치로 게임 소리도 켬
+  };
   cv.addEventListener("pointerdown", skip);
   window.addEventListener("keydown", function k(e) { if (done) return window.removeEventListener("keydown", k, true); skip(e); }, true);
 

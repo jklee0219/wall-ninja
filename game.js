@@ -27,11 +27,11 @@ const sdk = {
 };
 
 const TEXT = {
-  ko: { title: "벽타는 닌자", start: "출발!", jump: "점프", climb: "오르기", keyJump: "[스페이스]", keyClimb: "[↑]", best: "최고",
+  ko: { title: "벽타는 닌자", start: "출발!", jump: "점프", climb: "오르기", keyJump: "[스페이스]", keyClimb: "[↑]", tapSound: "♪ 화면을 터치하면 음악이 나와요", best: "최고",
         overs: ["미션 실패!", "게임 오버!", "아깝다!", "추락!", "재도전?"],
         again: "다시 오르기", change: "캐릭터 바꾸기", unit: "m", how: "위에 장애물이 있으면 반대편 벽으로 점프!",
         zones: [] },
-  en: { title: "Wall Ninja", start: "GO!", jump: "JUMP", climb: "CLIMB", keyJump: "[SPACE]", keyClimb: "[↑]", best: "BEST",
+  en: { title: "Wall Ninja", start: "GO!", jump: "JUMP", climb: "CLIMB", keyJump: "[SPACE]", keyClimb: "[↑]", tapSound: "♪ Tap the screen for music", best: "BEST",
         overs: ["MISSION FAILED", "GAME OVER", "SO CLOSE!", "WIPEOUT!", "TRY AGAIN?"],
         again: "Climb again", change: "Change character", unit: "m", how: "Obstacle above? Jump to the other wall!",
         zones: [] },
@@ -157,7 +157,7 @@ function loadMusic() {
   for (const name of ["title", "play"]) {
     fetch(`audio/bgm_${name}.mp3`).then(r => r.arrayBuffer())
       .then(b => new Promise((ok, no) => actx.decodeAudioData(b, ok, no)))
-      .then(buf => { music.bufs[name] = buf; music.cur = null; })     // 다 받으면 지금 화면 곡으로 다시 맞춤
+      .then(buf => { music.bufs[name] = buf; })                      // 다 받으면 다음 프레임에 지금 화면 곡을 틂
       .catch(() => {});
   }
 }
@@ -741,6 +741,8 @@ function drawOverlay() {
     cx.fillStyle = "rgba(14,10,34,.55)"; cx.fillRect(0, 0, w, h);
     text(T.title, w / 2, h * 0.15, Math.min(big * 1.6, w / (T.title.length + 1.5)), "#ffffff");   // 화면 폭에 맞춤
     drawCharSelect(w, h, big);
+    if ((!actx || actx.state !== "running") && audioEnabled && Math.floor(st.t * 1.6) % 2 === 0)   // 브라우저는 첫 터치 전엔 소리를 막음
+      text(T.tapSound, w / 2, h * 0.15 + big * 1.2, Math.round(big * 0.42), "#ffd640", "center", true, w - 24);
   }
   if (st.mode === "over") {
     cx.fillStyle = "rgba(14,10,34,.72)"; cx.fillRect(0, 0, w, h);
