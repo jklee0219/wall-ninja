@@ -27,16 +27,18 @@ const sdk = {
 };
 
 const TEXT = {
-  ko: { title: "벽타는 닌자", start: "출발!", jump: "점프", climb: "오르기", best: "최고",
+  ko: { title: "벽타는 닌자", start: "출발!", jump: "점프", climb: "오르기", keyJump: "[스페이스]", keyClimb: "[↑]", best: "최고",
         overs: ["미션 실패!", "게임 오버!", "아깝다!", "추락!", "재도전?"],
         again: "다시 오르기", change: "캐릭터 바꾸기", unit: "m", how: "위에 장애물이 있으면 반대편 벽으로 점프!",
         zones: [] },
-  en: { title: "Wall Ninja", start: "GO!", jump: "JUMP", climb: "CLIMB", best: "BEST",
+  en: { title: "Wall Ninja", start: "GO!", jump: "JUMP", climb: "CLIMB", keyJump: "[SPACE]", keyClimb: "[↑]", best: "BEST",
         overs: ["MISSION FAILED", "GAME OVER", "SO CLOSE!", "WIPEOUT!", "TRY AGAIN?"],
         again: "Climb again", change: "Change character", unit: "m", how: "Obstacle above? Jump to the other wall!",
         zones: [] },
 };
 let T = TEXT.ko;
+// 마우스로 쓰는 컴퓨터인지 (터치 전용 폰에서는 키 안내를 숨김)
+const HAS_KEYS = !!(window.matchMedia && matchMedia("(hover: hover) and (pointer: fine)").matches);
 
 // ───────────── 세계 ─────────────
 const LS = 36 / 14;               // 저해상도 픽셀 / 세계 단위 (닌자 키 36px ≈ 14 단위)
@@ -247,7 +249,7 @@ function ending() {
 }
 
 function gameOver() {
-  st.mode = "over"; st.plays++;
+  st.mode = "over"; st.plays++; st.overAt = st.t;
   st.overMsg = Math.floor(Math.random() * 5);                  // 문구는 매번 무작위
   if (st.steps > st.best) st.best = st.steps;
   st.checkpoint = Math.max(0, st.steps - 30);                 // 떨어진 곳에서 30m 아래부터 다시
@@ -681,10 +683,14 @@ function drawHud() {
   if (st.mode !== "play") return;                               // 게임 오버 화면에선 조작 버튼 숨김
   const o1 = pixelBox(pad, y, bw, bh, "#3ce6ff", "#1a6f8a", st.pressFx.jump);
   pixelIcon("swap", pad + bw * 0.27, y + o1 + bh / 2, Math.round(bh * 0.34), "#0e1a3a");
-  text(T.jump, pad + bw * 0.58, y + o1 + bh / 2, Math.round(bh * 0.3), "#0e1a3a", "center", false, bw * 0.56);
+  const keyHint = HAS_KEYS;                                      // 컴퓨터(마우스·키보드)로 접속했을 때만 키 안내
+  const ly = keyHint ? bh * 0.4 : bh / 2;
+  text(T.jump, pad + bw * 0.58, y + o1 + ly, Math.round(bh * 0.3), "#0e1a3a", "center", false, bw * 0.56);
+  if (keyHint) text(T.keyJump, pad + bw * 0.58, y + o1 + bh * 0.74, Math.round(bh * 0.17), "#0e1a3a", "center", false, bw * 0.56);
   const o2 = pixelBox(pad * 2 + bw, y, bw, bh, "#ff40a0", "#8a1a55", st.pressFx.climb);
   pixelIcon("up", pad * 2 + bw + bw * 0.27, y + o2 + bh / 2, Math.round(bh * 0.34), "#ffffff");
-  text(T.climb, pad * 2 + bw + bw * 0.6, y + o2 + bh / 2, Math.round(bh * 0.3), "#ffffff", "center", false, bw * 0.56);
+  text(T.climb, pad * 2 + bw + bw * 0.6, y + o2 + ly, Math.round(bh * 0.3), "#ffffff", "center", false, bw * 0.56);
+  if (keyHint) text(T.keyClimb, pad * 2 + bw + bw * 0.6, y + o2 + bh * 0.74, Math.round(bh * 0.17), "#ffffff", "center", false, bw * 0.56);
   if (st.banner && st.bannerT > 0) { cx.fillStyle = "rgba(14,10,34,.6)"; cx.fillRect(0, R(h * 0.3 - big * 0.85), w, R(big * 1.7)); }   // 어떤 배경에서도 읽히게
   if (st.banner && st.bannerT > 0 && Math.floor(st.bannerT * 8) % 2 === 0) text(st.banner.text, w / 2, h * 0.3, Math.min(big, w / (st.banner.text.length * (/[가-힣]/.test(st.banner.text) ? 1 : 0.62) + 1.5)), st.banner.col);
 }
@@ -790,15 +796,19 @@ window.addEventListener("keydown", e => {
   if (e.repeat) return;
   if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "BUTTON")) return;
   const k = e.key;
-  if (st.mode === "over" && (k === "Enter" || k === " ")) { restart(); e.preventDefault(); return; }
+  if (st.mode === "over") {                                       // 점프하려고 연타하다 바로 재시작되지 않게, 스페이스는 0.8초 뒤부터
+    if (k === "Enter" || (k === " " && st.t - (st.overAt || 0) > 0.8)) restart();
+    if (k === " ") e.preventDefault();
+    return;
+  }
   if (st.mode === "title") {
     if (k === "ArrowLeft" || k === "a") pickChar(-1);
     else if (k === "ArrowRight" || k === "d") pickChar(1);
     else if (k === "Enter" || k === " ") { begin(); e.preventDefault(); }
     return;
   }
-  if (k === "ArrowLeft" || k === "a" || k === "z") act(true);
-  else if (k === "ArrowRight" || k === "d" || k === "x" || k === " " || k === "ArrowUp") { act(false); e.preventDefault(); }
+  if (k === " " || k === "ArrowLeft" || k === "a" || k === "z") { act(true); e.preventDefault(); }   // 점프(반대쪽 벽) = 스페이스
+  else if (k === "ArrowUp" || k === "ArrowRight" || k === "d" || k === "x") { act(false); e.preventDefault(); }   // 오르기 = ↑
 });
 
 // ───────────── 루프 ─────────────
