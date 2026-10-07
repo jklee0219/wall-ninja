@@ -123,11 +123,11 @@ function loadChar(i) {
   st.char = i; const p = st.prog[CHARS[i].id] || {};
   st.best = p.best || 0; st.checkpoint = p.cp || 0; st.cleared = !!p.cleared; st.tierLv = tierOf(st.best);
 }
-function save() { if (!st.ready) return; storeChar(); sdk.save(JSON.stringify({ v: 2, prog: st.prog, plays: st.plays, char: CHARS[st.char].id })); }
+function save() { if (!st.ready) return; storeChar(); sdk.save(JSON.stringify({ v: 2, prog: st.prog, plays: st.plays, char: CHARS[st.char].id, music: musicOn })); }
 async function loadSave() {
   const raw = await sdk.load(); if (!raw) return;
   try {
-    const d = JSON.parse(raw); st.plays = d.plays || 0;
+    const d = JSON.parse(raw); st.plays = d.plays || 0; if (d.music === false) musicOn = false;
     const ci = Math.max(0, CHARS.findIndex(c => c.id === d.char));
     if (d.prog) st.prog = d.prog;                                    // v2: 캐릭터별
     else st.prog[CHARS[ci].id] = { best: d.best || 0, cp: d.cp || 0, cleared: !!d.cleared };   // v1 → 지금 캐릭터 기록으로 옮김
@@ -150,6 +150,15 @@ function setAudio(on) { audioEnabled = on; if (master) master.gain.value = on ? 
 // 시작 화면 = title, 게임 중·게임 오버 = play. 화면이 바뀌면 0.6초 동안 겹치며 넘어가고, 끊김 없이 반복한다.
 // 소리는 첫 터치(ensureAudio) 뒤에만 나오고, 유튜브 음소거·일시정지는 master·actx 를 그대로 따른다.
 const MUSIC_VOL = 0.75;
+let musicOn = true;                                               // 음악 버튼 (효과음과 따로)
+function toggleMusic() {
+  musicOn = !musicOn; ensureAudio(); save();
+  if (!musicOn && music.cur) {                                     // 끌 때: 살짝 줄이며 멈춤
+    const t = actx.currentTime, g = music.cur.gain.gain;
+    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t); g.linearRampToValueAtTime(0, t + 0.3);
+    music.cur.src.stop(t + 0.35); music.cur = null;
+  }
+}
 const music = { bufs: {}, loading: false, cur: null, want: null };
 function loadMusic() {
   if (!actx || music.loading) return;
@@ -164,6 +173,7 @@ function loadMusic() {
 function updateMusic() {
   if (!actx) return;
   loadMusic();
+  if (!musicOn) return;
   const want = st.mode === "title" ? "title" : "play";
   if (music.cur && music.cur.name === want) return;
   const buf = music.bufs[want]; if (!buf) return;
@@ -641,6 +651,7 @@ function pixelBox(x, y, w, h, fill, edge, press) {
 
 // 픽셀 아이콘 (문자 기호 대신 직접 그린 7×7 그림)
 const ICONS = {
+  note:  ["...###.", "...#.##", "...#..#", "...#...", ".###...", "####...", ".##...."],
   up:    ["...#...", "..###..", ".#####.", "#######", "..###..", "..###..", "..###.."],
   swap:  ["..#....", ".######", "..#....", ".......", "....#..", "######.", "....#.."],
   left:  ["...#...", "..##...", ".######", "#######", ".######", "..##...", "...#..."],
@@ -652,6 +663,14 @@ function pixelIcon(name, cxp, cyp, size, color) {
   m.forEach((row, j) => [...row].forEach((ch, i) => { if (ch === "#") cx.fillRect(x0 + i * u, y0 + j * u, u, u); }));
 }
 
+let musicBtn = null;
+function drawMusicBtn() {
+  const s = Math.round(Math.max(36, Math.min(48, view.w * 0.1))), x = view.w - s - 10, y = 10;
+  musicBtn = { x, y, w: s, h: s };
+  pixelBox(x, y, s, s, musicOn ? "#ffd640" : "#8a8aa8", musicOn ? "#8a6a10" : "#3a3a58", 0);
+  pixelIcon("note", x + s / 2, y + s / 2 - 2, Math.round(s * 0.5), "#1a1030");
+  if (!musicOn) { cx.save(); cx.strokeStyle = "#ff4d6d"; cx.lineWidth = Math.max(3, s / 10); cx.beginPath(); cx.moveTo(x + s * 0.22, y + s * 0.2); cx.lineTo(x + s * 0.78, y + s * 0.74); cx.stroke(); cx.restore(); }
+}
 function drawHud() {
   if (st.mode === "title") return;                             // 시작 화면에선 점수·버튼 숨김
   const w = view.w, h = view.h, u = Math.min(w, h * 0.62) / 100;
@@ -667,10 +686,11 @@ function drawHud() {
     const g = COSTUMES[tierNow()];                               // 지금 등급
     text(T === TEXT.ko ? g.ko : g.en, lx0, ly0 + Math.round(big * 0.55), Math.round(big * 0.42), g.col, "left"); }
   text(`${T.best} ${Math.max(st.best, st.steps)}${T.unit}`, w / 2, h * 0.08 + big * 1.0, Math.round(big * 0.5), "#ffd640");
-  if (st.coins) text(`● ${st.coins}`, w - 12, h * 0.08, Math.round(big * 0.55), "#ffd640", "right");
+  const ry = Math.max(h * 0.08, 76);                              // 음악 버튼 아래
+  if (st.coins) text(`● ${st.coins}`, w - 12, ry, Math.round(big * 0.55), "#ffd640", "right");
   const sk = skill();                                          // 능력 남은 횟수
-  if (sk === "armor") text(st.armor ? "🛡" : "·", w - 12, h * 0.08 + big * 0.9, Math.round(big * 0.6), "#3ce6ff", "right");
-  if (sk === "revive") text(st.revive ? "♥" : "♡", w - 12, h * 0.08 + big * 0.9, Math.round(big * 0.6), "#ff40a0", "right");
+  if (sk === "armor") text(st.armor ? "🛡" : "·", w - 12, ry + big * 0.9, Math.round(big * 0.6), "#3ce6ff", "right");
+  if (sk === "revive") text(st.revive ? "♥" : "♡", w - 12, ry + big * 0.9, Math.round(big * 0.6), "#ff40a0", "right");
   if (st.mode === "play") {
     const cells = 20, bw = Math.min(w * 0.72, 300), cw = bw / cells, bx = (w - bw) / 2, by = h * 0.08 + big * 1.6;
     const on = Math.ceil(Math.max(0, st.time) * cells);
@@ -741,7 +761,7 @@ function drawOverlay() {
     cx.fillStyle = "rgba(14,10,34,.55)"; cx.fillRect(0, 0, w, h);
     text(T.title, w / 2, h * 0.15, Math.min(big * 1.6, w / (T.title.length + 1.5)), "#ffffff");   // 화면 폭에 맞춤
     drawCharSelect(w, h, big);
-    if ((!actx || actx.state !== "running") && audioEnabled && Math.floor(st.t * 1.6) % 2 === 0)   // 브라우저는 첫 터치 전엔 소리를 막음
+    if ((!actx || actx.state !== "running") && audioEnabled && musicOn && Math.floor(st.t * 1.6) % 2 === 0)   // 브라우저는 첫 터치 전엔 소리를 막음
       text(T.tapSound, w / 2, h * 0.15 + big * 1.2, Math.round(big * 0.42), "#ffd640", "center", true, w - 24);
   }
   if (st.mode === "over") {
@@ -772,12 +792,13 @@ function draw() {
   cx.imageSmoothingEnabled = false;
   cx.drawImage(low, 0, 0, view.lw * view.k, view.lh * view.k);
   cx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
-  drawHud(); drawOverlay();
+  drawHud(); drawOverlay(); drawMusicBtn();
 }
 
 // ───────────── 입력 ─────────────
 cv.addEventListener("pointerdown", e => {
   const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  if (musicBtn && inBox(musicBtn, x, y)) { toggleMusic(); return; }   // 음악 켜기/끄기 (게임 조작보다 먼저)
   if (st.mode === "title") {
     ensureAudio();
     if (selBtns && inBox(selBtns.left, x, y)) pickChar(-1);
@@ -798,6 +819,7 @@ window.addEventListener("keydown", e => {
   if (e.repeat) return;
   if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "BUTTON")) return;
   const k = e.key;
+  if (k === "m" || k === "M") { toggleMusic(); return; }           // M 키 = 음악 켜기/끄기
   if (st.mode === "over") {                                       // 점프하려고 연타하다 바로 재시작되지 않게, 스페이스는 0.8초 뒤부터
     if (k === "Enter" || (k === " " && st.t - (st.overAt || 0) > 0.8)) restart();
     if (k === " ") e.preventDefault();
